@@ -1,20 +1,19 @@
-SRC += features/autocorrection.c
-
 ENCODER_MAP_ENABLE = yes
 
-SEND_STRING_ENABLE = yes
-
-CAPS_WORD_ENABLE = yes
-
-COMMAND_ENABLE = no
-RAW_ENABLE = no
-MOUSEKEY_ENABLE = no
-
 MIDI_ENABLE = yes
-DEBOUNCE_TYPE = sym_eager_pk
-DEFERRED_EXEC_ENABLE = yes
 
-OPT_DEFS += -DCORTEX_ENABLE_WFI_IDLE=TRUE -O3
+DEBOUNCE_TYPE = sym_eager_pk
+
+AUTOCORRECT_ENABLE = yes
+
+OPT_DEFS += -O2
 LTO_ENABLE = yes
 
 # STM32L432KB (128KB Flash)
+
+#CONSOLE_ENABLE = yes
+# 940 / 1350
+# 960 / 1390 LTO
+# 1000 / 1440 LTO + -O2
+# 1060 / 1520 LTO + -O3. Unstable with RGB turned on
+# 1060 / 1520 LTO + -0fast. Unstable with RGB turned on
