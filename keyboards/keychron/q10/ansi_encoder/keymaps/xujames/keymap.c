@@ -16,7 +16,7 @@
 
 #include QMK_KEYBOARD_H
 
-// ToDo: HID for google meet bidirectional feedback, RGB status indicators
+// ToDo: HID for google meet bidirectional feedback
 
 extern MidiDevice midi_device;
 
@@ -24,7 +24,7 @@ extern MidiDevice midi_device;
 Mains Volume: channel 1, CC7, 0 - 127 (0dB @ 104, +6dB @ 127)
 Analog 1 Gain: channel 1, CC9, set to desired gain. (AT4040 @ 45db) */
 #define AN1_GAIN 45                 // Analog 1 microphone gain in dB
-#define AN2_GAIN 0                  // Analog 2 microphone gain in dB
+//#define AN2_GAIN 0                  // Analog 2 microphone gain in dB
 #define STARTUP_VOLUME 20           // Default UCX II mains volume (0 - 127)
 #define VOLUME_STEP 3               // Rotary knob volume change speed
 
@@ -53,7 +53,7 @@ enum custom_keycodes {
 
 const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
     [MAC_BASE] = LAYOUT_ansi_89(            // MAC key switch
-        UCX_AN1_TOG,   KC_ESC,   KC_BRID,  KC_BRIU,  KC_NO,    KC_NO,    RGB_VAD,   RGB_VAI,  KC_MPRV,  KC_MPLY,  KC_MNXT,  KC_MUTE,  KC_VOLD,  KC_VOLU,  KC_INS,             KC_DEL,
+        UCX_AN1_TOG,   KC_ESC,   KC_BRID,  KC_BRIU,  KC_NO,    KC_NO,    KC_NO,     KC_NO,    KC_MPRV,  KC_MPLY,  KC_MNXT,  KC_MUTE,  KC_VOLD,  KC_VOLU,  KC_INS,             KC_DEL,
         MO(MAC_FN),    KC_GRV,   KC_1,     KC_2,     KC_3,     KC_4,     KC_5,      KC_6,     KC_7,     KC_8,     KC_9,     KC_0,     KC_MINS,  KC_EQL,   KC_BSPC,            KC_PGUP,
         UCX_AN1_PTM,   KC_TAB,   KC_Q,     KC_W,     KC_E,     KC_R,     KC_T,      KC_Y,     KC_U,     KC_I,     KC_O,     KC_P,     KC_LBRC,  KC_RBRC,  KC_BSLS,            KC_PGDN,
         UCX_AN1_PTM,   KC_CAPS,  KC_A,     KC_S,     KC_D,     KC_F,     KC_G,      KC_H,     KC_J,     KC_K,     KC_L,     KC_SCLN,  KC_QUOT,            KC_ENT,             KC_HOME,
@@ -69,7 +69,7 @@ const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
         _______,  _______,  _______,            _______,  _______,  _______,                       _______,            _______,                      RGB_MOD,  RGB_VAD,  RGB_TOG),
 
     [DVORAK_BASE] = LAYOUT_ansi_89(         // WIN key switch
-        UCX_AN1_TOG,   KC_ESC,   KC_BRID,  KC_BRIU,  KC_MCTL,  KC_LPAD,  RGB_VAD,   RGB_VAI,  KC_MPRV,  KC_MPLY,  KC_MNXT,  KC_MUTE,  KC_VOLD,  KC_VOLU,  KC_INS,             KC_DEL,
+        UCX_AN1_TOG,   KC_ESC,   KC_BRID,  KC_BRIU,  KC_NO,    KC_NO,    KC_NO,     KC_NO,    KC_MPRV,  KC_MPLY,  KC_MNXT,  KC_MUTE,  KC_VOLD,  KC_VOLU,  KC_INS,             KC_DEL,
         MO(DVORAK_FN), KC_GRV,   KC_1,     KC_2,     KC_3,     KC_4,     KC_5,      KC_6,     KC_7,     KC_8,     KC_9,     KC_0,     KC_LBRC,  KC_RBRC,  KC_BSPC,            KC_PGUP,
         UCX_AN1_PTM,   KC_TAB,   KC_QUOT,  KC_COMM,  KC_DOT,   KC_P,     KC_Y,      KC_F,     KC_G,     KC_C,     KC_R,     KC_L,     KC_SLSH,  KC_EQL,   KC_BSLS,            KC_PGDN,
         UCX_AN1_PTM,   KC_CAPS,  KC_A,     KC_O,     KC_E,     KC_U,     KC_I,      KC_D,     KC_H,     KC_T,     KC_N,     KC_S,     KC_MINS,            KC_ENT,             KC_HOME,
@@ -94,6 +94,20 @@ const uint16_t PROGMEM encoder_map[][NUM_ENCODERS][NUM_DIRECTIONS] = {
 };
 #endif
 
+void keyboard_post_init_user(void) {
+  // Call the post init code.
+  analog_1 = GAIN_MUTE;
+  analog_2 = GAIN_MUTE;
+  midi_send_cc(&midi_device, 0 , 0x07, STARTUP_VOLUME); // Set Mains to startup volume
+  midi_send_cc(&midi_device, 0 , 0x09, 0); // UCX_AN1 MUTE
+  rgblight_disable();
+}
+
+void suspend_power_down_user(void) {
+    // code will run multiple times while keyboard is suspended
+    keyboard_post_init_user();
+}
+
 // clang-format on
 static uint8_t mains_volume = STARTUP_VOLUME;
 static uint32_t key_timer;
@@ -112,18 +126,22 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
             if (analog_1 == GAIN_ACTIVE) {
                 midi_send_cc(&midi_device, 0 , 0x09, 0);
                 analog_1 = GAIN_MUTE;
+                rgblight_disable();
             } else {
                 midi_send_cc(&midi_device, 0 , 0x09, AN1_GAIN);
                 analog_1 = GAIN_ACTIVE;
+                rgblight_enable();
             }
             return false;
         case UCX_AN1_TOG:                           // Analog 1 digital mute toggle
             if (record->event.pressed) {
                 if (analog_1){
                     midi_send_cc(&midi_device, 0 , 0x09, AN1_GAIN);
+                    rgblight_enable();
                 }
                 else {                              // Apply -45dB pad instead of toggling 48V phantom for zero pop on condenser mics
                     midi_send_cc(&midi_device, 0 , 0x09, 0);
+                    rgblight_disable();
                 }
                 analog_1 = !analog_1;
             }

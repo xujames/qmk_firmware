@@ -6,6 +6,8 @@ DEBOUNCE_TYPE = sym_eager_pk
 
 AUTOCORRECT_ENABLE = yes
 
+NKRO_ENABLE = yes
+
 OPT_DEFS += -O2
 LTO_ENABLE = yes
 
