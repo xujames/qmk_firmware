@@ -1,5 +1,7 @@
 ENCODER_MAP_ENABLE = yes
 
+DEFERRED_EXEC_ENABLE = yes
+
 MIDI_ENABLE = yes
 
 DEBOUNCE_TYPE = sym_eager_pk

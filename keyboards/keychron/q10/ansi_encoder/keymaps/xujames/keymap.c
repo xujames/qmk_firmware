@@ -20,13 +20,15 @@
 
 extern MidiDevice midi_device;
 
+#define IDLE_TIMEOUT_MS 3600000     // Idle timeout in milliseconds.
 /* RME Fireface UCX II MIDI Control: (channel 1 maps to 0...)
 Mains Volume: channel 1, CC7, 0 - 127 (0dB @ 104, +6dB @ 127)
 Analog 1 Gain: channel 1, CC9, set to desired gain. (AT4040 @ 45db) */
 #define AN1_GAIN 45                 // Analog 1 microphone gain in dB
-//#define AN2_GAIN 0                  // Analog 2 microphone gain in dB
+#define AN2_GAIN 0                  // Analog 2 microphone gain in dB
 #define STARTUP_VOLUME 20           // Default UCX II mains volume (0 - 127)
-#define VOLUME_STEP 3               // Rotary knob volume change speed
+#define VOLUME_STEP 2               // Rotary knob volume change speed
+#define VOLUME_LIMIT 60             // Volume limit (-13.8db)
 
 // clang-format off
 
@@ -94,24 +96,35 @@ const uint16_t PROGMEM encoder_map[][NUM_ENCODERS][NUM_DIRECTIONS] = {
 };
 #endif
 
-void keyboard_post_init_user(void) {
-  // Call the post init code.
-  analog_1 = GAIN_MUTE;
-  analog_2 = GAIN_MUTE;
-  midi_send_cc(&midi_device, 0 , 0x07, STARTUP_VOLUME); // Set Mains to startup volume
-  midi_send_cc(&midi_device, 0 , 0x09, 0); // UCX_AN1 MUTE
-  rgblight_disable();
+void UCX_cleanup(void) {
+    analog_1 = GAIN_MUTE;
+    analog_2 = GAIN_MUTE;
+    midi_send_cc(&midi_device, 0, 0x07, STARTUP_VOLUME); // Set Mains to startup volume
+    midi_send_cc(&midi_device, 0, 0x09, 0); // UCX_AN1 MUTE
+    rgblight_disable();
 }
 
-void suspend_power_down_user(void) {
-    // code will run multiple times while keyboard is suspended
-    keyboard_post_init_user();
+static uint32_t idle_callback(uint32_t trigger_time, void* cb_arg) {
+    // If execution reaches here, the keyboard has gone idle.
+    UCX_cleanup();
+    return 0;
+}
+
+void keyboard_post_init_user(void) {
+    // Call the post init code.
+    wait_ms(2000);      //wait for OS to recognize the device
+    UCX_cleanup();
 }
 
 // clang-format on
 static uint8_t mains_volume = STARTUP_VOLUME;
 static uint32_t key_timer;
 bool process_record_user(uint16_t keycode, keyrecord_t *record) {
+    static deferred_token idle_token = INVALID_DEFERRED_TOKEN;
+    if (!extend_deferred_exec(idle_token, IDLE_TIMEOUT_MS)) {
+        idle_token = defer_exec(IDLE_TIMEOUT_MS, idle_callback, NULL);
+    }
+
     switch (keycode) {
         case KC_DFU:                                // Reboot for firmware flashing
             if (record->event.pressed) {
@@ -148,11 +161,11 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
             return false;
         case UCX_MAINS_VOLU:                           // Mains Volume Up
             if (record->event.pressed) {
-                if (mains_volume + VOLUME_STEP <= 104) {
+                if (mains_volume + VOLUME_STEP <= VOLUME_LIMIT) {
                     mains_volume += VOLUME_STEP;
                 }
                 else {
-                    mains_volume = 104;
+                    mains_volume = VOLUME_LIMIT;
                 }
                 midi_send_cc(&midi_device, 0 , 0x07, mains_volume);
             }
