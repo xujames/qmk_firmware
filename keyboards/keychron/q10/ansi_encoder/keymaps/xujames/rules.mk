@@ -13,6 +13,8 @@ NKRO_ENABLE = yes
 OPT_DEFS += -O2
 LTO_ENABLE = yes
 
+SRC += features/socd_cleaner.c
+
 # STM32L432KB (128KB Flash)
 
 #CONSOLE_ENABLE = yes

@@ -14,9 +14,13 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include QMK_KEYBOARD_H
-
 // ToDo: HID for google meet bidirectional feedback
+
+#include QMK_KEYBOARD_H
+#include "features/socd_cleaner.h"
+
+socd_cleaner_t socd_v = {{KC_W, KC_S}, SOCD_CLEANER_LAST};
+socd_cleaner_t socd_h = {{KC_A, KC_D}, SOCD_CLEANER_LAST};
 
 extern MidiDevice midi_device;
 
@@ -29,6 +33,10 @@ Analog 1 Gain: channel 1, CC9, set to desired gain. (AT4040 @ 45db) */
 #define STARTUP_VOLUME 20           // Default UCX II mains volume (0 - 127)
 #define VOLUME_STEP 2               // Rotary knob volume change speed
 #define VOLUME_LIMIT 60             // Volume limit (-13.8db)
+
+#define CLAMP(v, min, max) ((v) < (min) ? (min) : ((v) > (max) ? (max) : (v)))
+
+static uint8_t mains_volume = STARTUP_VOLUME;
 
 // clang-format off
 
@@ -51,6 +59,7 @@ enum custom_keycodes {
     UCX_MAINS_VOLU,
     UCX_MAINS_VOLD,
     UCX_MAINS_PTM,
+    SOCDTOG,
 };
 
 const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
@@ -68,7 +77,7 @@ const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
         _______,  _______,  _______,  _______,  _______,  _______,  _______,   _______,  _______,  _______,  _______,  _______,  _______,  _______,  _______,            _______,
         _______,  _______,  _______,  _______,  KC_DFU,   _______,  _______,   _______,  _______,  _______,  _______,  _______,  _______,            _______,            _______,
         _______,  _______,            _______,  _______,  _______,  _______,   _______,  _______,  _______,  _______,  _______,  _______,  _______,  _______,  RGB_VAI,
-        _______,  _______,  _______,            _______,  _______,  _______,                       _______,            _______,                      RGB_MOD,  RGB_VAD,  RGB_TOG),
+        SOCDTOG,  _______,  _______,            _______,  _______,  _______,                       _______,            _______,                      RGB_MOD,  RGB_VAD,  RGB_TOG),
 
     [DVORAK_BASE] = LAYOUT_ansi_89(         // WIN key switch
         UCX_AN1_TOG,   KC_ESC,   KC_BRID,  KC_BRIU,  KC_NO,    KC_NO,    KC_NO,     KC_NO,    KC_MPRV,  KC_MPLY,  KC_MNXT,  KC_MUTE,  KC_VOLD,  KC_VOLU,  KC_INS,             KC_DEL,
@@ -116,10 +125,17 @@ void keyboard_post_init_user(void) {
     UCX_cleanup();
 }
 
+void adjust_mains_volume(int8_t volume_change) {
+    mains_volume = CLAMP(mains_volume + volume_change, 0, VOLUME_LIMIT);
+    midi_send_cc(&midi_device, 0, 0x07, mains_volume);
+}
+
 // clang-format on
-static uint8_t mains_volume = STARTUP_VOLUME;
 static uint32_t key_timer;
 bool process_record_user(uint16_t keycode, keyrecord_t *record) {
+    if (!process_socd_cleaner(keycode, record, &socd_v)) { return false; }
+    if (!process_socd_cleaner(keycode, record, &socd_h)) { return false; }
+
     static deferred_token idle_token = INVALID_DEFERRED_TOKEN;
     if (!extend_deferred_exec(idle_token, IDLE_TIMEOUT_MS)) {
         idle_token = defer_exec(IDLE_TIMEOUT_MS, idle_callback, NULL);
@@ -138,11 +154,11 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
         case UCX_AN1_PTM:                           // Analog 1 push to mute AND push to talk.
             if (analog_1 == GAIN_ACTIVE) {
                 midi_send_cc(&midi_device, 0 , 0x09, 0);
-                analog_1 = GAIN_MUTE;
+                analog_1 = !analog_1;
                 rgblight_disable();
             } else {
                 midi_send_cc(&midi_device, 0 , 0x09, AN1_GAIN);
-                analog_1 = GAIN_ACTIVE;
+                analog_1 = !analog_1;
                 rgblight_enable();
             }
             return false;
@@ -161,24 +177,12 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
             return false;
         case UCX_MAINS_VOLU:                           // Mains Volume Up
             if (record->event.pressed) {
-                if (mains_volume + VOLUME_STEP <= VOLUME_LIMIT) {
-                    mains_volume += VOLUME_STEP;
-                }
-                else {
-                    mains_volume = VOLUME_LIMIT;
-                }
-                midi_send_cc(&midi_device, 0 , 0x07, mains_volume);
+                adjust_mains_volume(VOLUME_STEP);
             }
             return false;
         case UCX_MAINS_VOLD:                           // Mains Volume Down
             if (record->event.pressed) {
-               if (mains_volume - VOLUME_STEP >= 0) {
-                    mains_volume -= VOLUME_STEP;
-                }
-                else {
-                    mains_volume = 0;
-                }
-                midi_send_cc(&midi_device, 0 , 0x07, mains_volume);
+                adjust_mains_volume(-VOLUME_STEP);
             }
             return false;
         case UCX_MAINS_PTM:                         // Mains volume push to mute
@@ -186,6 +190,11 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
                 midi_send_cc(&midi_device, 0 , 0x07, 0);
             } else {
                 midi_send_cc(&midi_device, 0 , 0x07, mains_volume);
+            }
+            return false;
+        case SOCDTOG:                              // SOCD Cleaner toggle
+            if (record->event.pressed) {
+                socd_cleaner_enabled = !socd_cleaner_enabled;
             }
             return false;
         default:
