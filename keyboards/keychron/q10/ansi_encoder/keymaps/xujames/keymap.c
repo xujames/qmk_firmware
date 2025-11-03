@@ -14,8 +14,6 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-// ToDo: HID for google meet bidirectional feedback
-
 #include QMK_KEYBOARD_H
 #include "features/socd_cleaner.h"
 
@@ -32,7 +30,7 @@ Analog 1 Gain: channel 1, CC9, set to desired gain. (AT4040 @ 45db) */
 #define AN2_GAIN 0                  // Analog 2 microphone gain in dB
 #define STARTUP_VOLUME 20           // Default UCX II mains volume (0 - 127)
 #define VOLUME_STEP 2               // Rotary knob volume change speed
-#define VOLUME_LIMIT 60             // Volume limit (-13.8db)
+#define VOLUME_LIMIT 104            // Volume limit (-13.8db @ 60)
 
 #define CLAMP(v, min, max) ((v) < (min) ? (min) : ((v) > (max) ? (max) : (v)))
 
@@ -76,8 +74,8 @@ const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
         _______,  _______,  _______,  _______,  _______,  _______,  _______,   _______,  _______,  _______,  _______,  _______,  _______,  _______,  _______,            _______,
         _______,  _______,  _______,  _______,  _______,  _______,  _______,   _______,  _______,  _______,  _______,  _______,  _______,  _______,  _______,            _______,
         _______,  _______,  _______,  _______,  KC_DFU,   _______,  _______,   _______,  _______,  _______,  _______,  _______,  _______,            _______,            _______,
-        _______,  _______,            _______,  _______,  _______,  _______,   _______,  _______,  _______,  _______,  _______,  _______,  _______,  _______,  RGB_VAI,
-        SOCDTOG,  _______,  _______,            _______,  _______,  _______,                       _______,            _______,                      RGB_MOD,  RGB_VAD,  RGB_TOG),
+        _______,  _______,            _______,  _______,  _______,  _______,   _______,  _______,  _______,  _______,  _______,  _______,  _______,  _______,  RM_VALU,
+        SOCDTOG,  _______,  _______,            _______,  _______,  _______,                       _______,            _______,                      RM_NEXT,  RM_VALD,  RM_TOGG),
 
     [DVORAK_BASE] = LAYOUT_ansi_89(         // WIN key switch
         UCX_AN1_TOG,   KC_ESC,   KC_BRID,  KC_BRIU,  KC_NO,    KC_NO,    KC_NO,     KC_NO,    KC_MPRV,  KC_MPLY,  KC_MNXT,  KC_MUTE,  KC_VOLD,  KC_VOLU,  KC_INS,             KC_DEL,
@@ -92,8 +90,8 @@ const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
         _______,  _______,  _______,  _______,  _______,  _______,  _______,   _______,  _______,  _______,  _______,  _______,  _______,   _______,  _______,            _______,
         _______,  _______,  _______,  _______,  _______,  _______,  _______,   KC_7,     KC_8,     KC_9,     KC_PPLS,  _______,  _______,   _______,  _______,            _______,
         _______,  _______,  _______,  _______,  KC_DFU,   _______,  _______,   KC_4,     KC_5,     KC_6,     KC_PPLS,  _______,  _______,             _______,            _______,
-        _______,  _______,            _______,  _______,  _______,  _______,   _______,  KC_PPLS,  KC_1,     KC_2,     KC_3,     KC_PENT,   _______,  _______,  RGB_VAI,
-        _______,  _______,  _______,            _______,  _______,  _______,                       KC_0,               KC_PDOT,                       RGB_MOD,  RGB_VAD,  RGB_TOG),
+        _______,  _______,            _______,  _______,  _______,  _______,   _______,  KC_PPLS,  KC_1,     KC_2,     KC_3,     KC_PENT,   _______,  _______,  RM_VALU,
+        SOCDTOG,  _______,  _______,            _______,  _______,  _______,                       KC_0,               KC_PDOT,                       RM_NEXT,  RM_VALD,  RM_TOGG),
 };
 
 #if defined(ENCODER_ENABLE) && defined(ENCODER_MAP_ENABLE)
@@ -110,7 +108,7 @@ void UCX_cleanup(void) {
     analog_2 = GAIN_MUTE;
     midi_send_cc(&midi_device, 0, 0x07, STARTUP_VOLUME); // Set Mains to startup volume
     midi_send_cc(&midi_device, 0, 0x09, 0); // UCX_AN1 MUTE
-    rgblight_disable();
+    rgb_matrix_disable_noeeprom();
 }
 
 static uint32_t idle_callback(uint32_t trigger_time, void* cb_arg) {
@@ -155,32 +153,32 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
             if (analog_1 == GAIN_ACTIVE) {
                 midi_send_cc(&midi_device, 0 , 0x09, 0);
                 analog_1 = !analog_1;
-                rgblight_disable();
+                rgb_matrix_disable_noeeprom();
             } else {
                 midi_send_cc(&midi_device, 0 , 0x09, AN1_GAIN);
                 analog_1 = !analog_1;
-                rgblight_enable();
+                rgb_matrix_enable_noeeprom();
             }
             return false;
         case UCX_AN1_TOG:                           // Analog 1 digital mute toggle
             if (record->event.pressed) {
                 if (analog_1){
                     midi_send_cc(&midi_device, 0 , 0x09, AN1_GAIN);
-                    rgblight_enable();
+                    rgb_matrix_enable_noeeprom();
                 }
                 else {                              // Apply -45dB pad instead of toggling 48V phantom for zero pop on condenser mics
                     midi_send_cc(&midi_device, 0 , 0x09, 0);
-                    rgblight_disable();
+                    rgb_matrix_disable_noeeprom();
                 }
                 analog_1 = !analog_1;
             }
             return false;
-        case UCX_MAINS_VOLU:                           // Mains Volume Up
+        case UCX_MAINS_VOLU:                        // Mains Volume Up
             if (record->event.pressed) {
                 adjust_mains_volume(VOLUME_STEP);
             }
             return false;
-        case UCX_MAINS_VOLD:                           // Mains Volume Down
+        case UCX_MAINS_VOLD:                        // Mains Volume Down
             if (record->event.pressed) {
                 adjust_mains_volume(-VOLUME_STEP);
             }
