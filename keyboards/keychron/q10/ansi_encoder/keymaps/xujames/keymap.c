@@ -199,3 +199,45 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
             return true;
     }
 }
+
+static bool fn_layer_rgb_was_off = false;
+
+layer_state_t layer_state_set_user(layer_state_t state) {
+    uint8_t layer = get_highest_layer(state);
+
+    // When entering FN layer, enable RGB if needed
+    if (layer == MAC_FN || layer == DVORAK_FN) {
+        if (!rgb_matrix_is_enabled()) {
+            fn_layer_rgb_was_off = true;
+            rgb_matrix_enable_noeeprom();
+        }
+    } else {
+        // When leaving FN layer, restore RGB state
+        if (fn_layer_rgb_was_off && rgb_matrix_is_enabled()) {
+            rgb_matrix_disable_noeeprom();
+            fn_layer_rgb_was_off = false;
+        }
+    }
+
+    return state;
+}
+
+bool rgb_matrix_indicators_user(void) {
+    // Show SOCD indicator on WASD when FN is held
+    uint8_t layer = get_highest_layer(layer_state);
+
+    if (layer == MAC_FN || layer == DVORAK_FN) {
+        // Set WASD colors based on SOCD state
+        uint8_t r = socd_cleaner_enabled ? 0 : 255;
+        uint8_t g = socd_cleaner_enabled ? 255 : 0;
+        uint8_t b = 0;
+
+        // Light up WASD keys
+        rgb_matrix_set_color(34, r, g, b);  // W
+        rgb_matrix_set_color(49, r, g, b);  // A
+        rgb_matrix_set_color(50, r, g, b);  // S
+        rgb_matrix_set_color(51, r, g, b);  // D
+    }
+
+    return false;
+}
